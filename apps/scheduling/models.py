@@ -34,6 +34,18 @@ class AvailabilitySlot(models.Model):
         if self.ends_at <= self.starts_at:
             raise ValidationError("Availability slot must end after it starts.")
 
+        overlapping_slots = AvailabilitySlot.objects.filter(
+            coach=self.coach,
+            starts_at__lt=self.ends_at,
+            ends_at__gt=self.starts_at,
+        ).exclude(status=AvailabilitySlot.Status.CANCELLED)
+
+        if self.pk:
+            overlapping_slots = overlapping_slots.exclude(pk=self.pk)
+
+        if overlapping_slots.exists():
+            raise ValidationError("Availability slot overlaps another active slot for this coach.")
+
     def save(self, *args, **kwargs):
         self.full_clean()
         return super().save(*args, **kwargs)
