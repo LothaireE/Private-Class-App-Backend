@@ -14,6 +14,6 @@ class SeedDevDataTests(TestCase):
 
         self.assertEqual(CoachProfile.objects.count(), 1)
         self.assertEqual(StudentProfile.objects.count(), 1)
-        self.assertEqual(AvailabilitySlot.objects.count(), 1)
+        self.assertEqual(AvailabilitySlot.objects.count(), 2)
         self.assertEqual(BookingRequest.objects.count(), 1)
         self.assertEqual(Notification.objects.count(), 1)

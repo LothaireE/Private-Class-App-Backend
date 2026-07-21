@@ -58,7 +58,7 @@ class Command(BaseCommand):
         student.disciplines.set([jiu_jitsu])
 
         starts_at = (timezone.now() + timedelta(days=1)).replace(minute=0, second=0, microsecond=0)
-        slot, _ = AvailabilitySlot.objects.get_or_create(
+        demo_slot, _ = AvailabilitySlot.objects.get_or_create(
             coach=coach,
             starts_at=starts_at,
             defaults={
@@ -71,13 +71,37 @@ class Command(BaseCommand):
         )
 
         booking, created = BookingRequest.objects.get_or_create(
-            slot=slot,
+            slot=demo_slot,
             coach=coach,
             student=student,
             defaults={"requested_topic": "Fundamentals"},
         )
         if created:
             notify_booking_requested(booking)
+
+        open_slot = (
+            AvailabilitySlot.objects.filter(coach=coach, status=AvailabilitySlot.Status.OPEN)
+            .exclude(booking_requests__isnull=False)
+            .first()
+        )
+        if open_slot is None:
+            open_starts_at = starts_at + timedelta(days=1)
+            while AvailabilitySlot.objects.filter(
+                coach=coach,
+                starts_at__lt=open_starts_at + timedelta(hours=1),
+                ends_at__gt=open_starts_at,
+            ).exclude(status=AvailabilitySlot.Status.CANCELLED).exists():
+                open_starts_at += timedelta(days=1)
+
+            AvailabilitySlot.objects.create(
+                coach=coach,
+                starts_at=open_starts_at,
+                ends_at=open_starts_at + timedelta(hours=1),
+                topic="Open booking slot",
+                location="Main academy",
+                discipline=jiu_jitsu,
+                price_cents=5000,
+            )
 
         self.stdout.write(self.style.SUCCESS("Seed data ready."))
         self.stdout.write("Coach login: coach@example.com / password123")

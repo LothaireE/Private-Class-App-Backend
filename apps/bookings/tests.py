@@ -139,6 +139,21 @@ class BookingApiTests(APITestCase):
         notification = Notification.objects.get(user=self.student_user, kind=Notification.Kind.SESSION_CANCELLED)
         self.assertEqual(notification.data["cancelled_by"], "coach")
 
+
+    def test_booking_response_includes_slot_summary(self):
+        booking = self.create_booking()
+        self.authenticate(self.student_user)
+
+        response = self.client.get(reverse("booking-request-detail", args=[booking.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["coach_display_name"], "Coach")
+        self.assertEqual(response.data["student_display_name"], "Student")
+        self.assertEqual(response.data["slot_topic"], "Guard passing")
+        self.assertEqual(response.data["slot_status"], AvailabilitySlot.Status.OPEN)
+        self.assertIn("slot_starts_at", response.data)
+        self.assertIn("slot_ends_at", response.data)
+
     def test_student_notes_are_private_to_owner(self):
         booking = self.create_booking()
         self.authenticate(self.coach_user)

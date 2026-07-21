@@ -8,6 +8,14 @@ from .models import BookingRequest, Cancellation, Session, StudentNote
 
 
 class BookingRequestSerializer(serializers.ModelSerializer):
+    coach_display_name = serializers.CharField(source="coach.display_name", read_only=True)
+    student_display_name = serializers.CharField(source="student.display_name", read_only=True)
+    slot_starts_at = serializers.DateTimeField(source="slot.starts_at", read_only=True)
+    slot_ends_at = serializers.DateTimeField(source="slot.ends_at", read_only=True)
+    slot_topic = serializers.CharField(source="slot.topic", read_only=True)
+    slot_location = serializers.CharField(source="slot.location", read_only=True)
+    slot_status = serializers.CharField(source="slot.status", read_only=True)
+
     class Meta:
         model = BookingRequest
         fields = [
@@ -16,6 +24,13 @@ class BookingRequestSerializer(serializers.ModelSerializer):
             "coach",
             "student",
             "status",
+            "coach_display_name",
+            "student_display_name",
+            "slot_starts_at",
+            "slot_ends_at",
+            "slot_topic",
+            "slot_location",
+            "slot_status",
             "requested_topic",
             "message",
             "rejection_reason",
