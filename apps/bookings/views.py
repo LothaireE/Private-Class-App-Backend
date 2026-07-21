@@ -1,6 +1,13 @@
 from django.db.models import Q
 from rest_framework import decorators, exceptions, permissions, response, status, viewsets
 
+from apps.notifications.services import (
+    notify_booking_accepted,
+    notify_booking_rejected,
+    notify_booking_requested,
+    notify_session_cancelled,
+)
+
 from .models import BookingRequest, Cancellation, Session, StudentNote
 from .permissions import IsBookingParticipant, IsSessionParticipant, is_coach_owner, is_student_owner
 from .serializers import (
@@ -29,12 +36,17 @@ class BookingRequestViewSet(viewsets.ModelViewSet):
             return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
+    def perform_create(self, serializer):
+        booking_request = serializer.save()
+        notify_booking_requested(booking_request)
+
     @decorators.action(detail=True, methods=["post"])
     def accept(self, request, pk=None):
         booking_request = self.get_object()
         if not is_coach_owner(request.user, booking_request.coach):
             raise exceptions.PermissionDenied("Only the coach can accept this booking request.")
         session = accept_booking_request(booking_request)
+        notify_booking_accepted(booking_request, session)
         return response.Response(SessionSerializer(session).data, status=status.HTTP_201_CREATED)
 
     @decorators.action(detail=True, methods=["post"])
@@ -49,6 +61,7 @@ class BookingRequestViewSet(viewsets.ModelViewSet):
         booking_request.status = BookingRequest.Status.REJECTED
         booking_request.rejection_reason = serializer.validated_data.get("reason", "")
         booking_request.save(update_fields=["status", "rejection_reason", "updated_at"])
+        notify_booking_rejected(booking_request)
         return response.Response(self.get_serializer(booking_request).data)
 
 
@@ -86,6 +99,7 @@ class SessionViewSet(viewsets.ReadOnlyModelViewSet):
             user=request.user,
             reason=serializer.validated_data.get("reason", ""),
         )
+        notify_session_cancelled(session, cancelled_by)
         return response.Response(CancellationSerializer(cancellation).data, status=status.HTTP_201_CREATED)
 
 
