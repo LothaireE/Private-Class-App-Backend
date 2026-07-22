@@ -74,6 +74,9 @@ class BookingDecisionSerializer(serializers.Serializer):
 
 
 class SessionSerializer(serializers.ModelSerializer):
+    coach_display_name = serializers.CharField(source="coach.display_name", read_only=True)
+    student_display_name = serializers.CharField(source="student.display_name", read_only=True)
+
     class Meta:
         model = Session
         fields = [
@@ -82,6 +85,8 @@ class SessionSerializer(serializers.ModelSerializer):
             "slot",
             "coach",
             "student",
+            "coach_display_name",
+            "student_display_name",
             "starts_at",
             "ends_at",
             "topic",

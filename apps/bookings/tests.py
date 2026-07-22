@@ -154,6 +154,18 @@ class BookingApiTests(APITestCase):
         self.assertIn("slot_starts_at", response.data)
         self.assertIn("slot_ends_at", response.data)
 
+
+    def test_session_response_includes_participant_names(self):
+        booking = self.create_booking()
+        self.authenticate(self.coach_user)
+        accept_response = self.client.post(reverse("booking-request-accept", args=[booking.id]))
+
+        response = self.client.get(reverse("session-detail", args=[accept_response.data["id"]]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["coach_display_name"], "Coach")
+        self.assertEqual(response.data["student_display_name"], "Student")
+
     def test_student_notes_are_private_to_owner(self):
         booking = self.create_booking()
         self.authenticate(self.coach_user)
