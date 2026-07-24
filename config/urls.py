@@ -10,7 +10,7 @@ from apps.accounts.views import AccountMeView
 from apps.bookings.views import BookingRequestViewSet, SessionViewSet, StudentNoteViewSet
 from apps.notifications.views import NotificationViewSet
 from apps.profiles.views import BlockedStudentViewSet, CoachProfileViewSet, DisciplineViewSet, StudentProfileViewSet
-from apps.scheduling.views import AvailabilitySlotViewSet
+from apps.scheduling.views import AvailabilitySlotViewSet, ProposalWindowViewSet
 
 router = DefaultRouter()
 router.register("disciplines", DisciplineViewSet, basename="discipline")
@@ -18,6 +18,7 @@ router.register("coach-profiles", CoachProfileViewSet, basename="coach-profile")
 router.register("student-profiles", StudentProfileViewSet, basename="student-profile")
 router.register("blocked-students", BlockedStudentViewSet, basename="blocked-student")
 router.register("availability-slots", AvailabilitySlotViewSet, basename="availability-slot")
+router.register("proposal-windows", ProposalWindowViewSet, basename="proposal-window")
 router.register("booking-requests", BookingRequestViewSet, basename="booking-request")
 router.register("sessions", SessionViewSet, basename="session")
 router.register("student-notes", StudentNoteViewSet, basename="student-note")

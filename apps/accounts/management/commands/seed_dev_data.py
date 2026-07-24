@@ -1,4 +1,5 @@
-from datetime import timedelta
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
@@ -7,7 +8,7 @@ from django.utils import timezone
 from apps.bookings.models import BookingRequest
 from apps.notifications.services import notify_booking_requested
 from apps.profiles.models import CoachProfile, Discipline, StudentProfile
-from apps.scheduling.models import AvailabilitySlot
+from apps.scheduling.models import AvailabilitySlot, ProposalWindow
 
 
 class Command(BaseCommand):
@@ -72,6 +73,8 @@ class Command(BaseCommand):
             },
         )
         coach.disciplines.set([jiu_jitsu, music])
+        coach.offered_topics = ["Fundamentals", "Technique review", "Sparring preparation"]
+        coach.save(update_fields=["offered_topics", "updated_at"])
 
         coach_two, _ = CoachProfile.objects.get_or_create(
             user=coach_two_user,
@@ -83,6 +86,8 @@ class Command(BaseCommand):
             },
         )
         coach_two.disciplines.set([jiu_jitsu])
+        coach_two.offered_topics = ["Competition strategy", "Guard passing", "Takedowns"]
+        coach_two.save(update_fields=["offered_topics", "updated_at"])
 
         student, _ = StudentProfile.objects.get_or_create(
             user=student_user,
@@ -163,6 +168,23 @@ class Command(BaseCommand):
                     discipline=jiu_jitsu,
                     price_cents=price_cents,
                 )
+
+        coach_timezone = ZoneInfo(coach.timezone)
+        coach_today = timezone.localdate(timezone=coach_timezone)
+        days_until_tuesday = (1 - coach_today.weekday()) % 7 or 7
+        proposal_date = coach_today + timedelta(days=days_until_tuesday)
+        proposal_start = timezone.make_aware(datetime.combine(proposal_date, time(14)), coach_timezone)
+        while AvailabilitySlot.objects.filter(
+            coach=coach,
+            starts_at__lt=proposal_start + timedelta(hours=3),
+            ends_at__gt=proposal_start,
+        ).exclude(status=AvailabilitySlot.Status.CANCELLED).exists():
+            proposal_start += timedelta(days=7)
+        ProposalWindow.objects.get_or_create(
+            coach=coach,
+            starts_at=proposal_start,
+            defaults={"ends_at": proposal_start + timedelta(hours=3), "location": "Main academy"},
+        )
 
         self.stdout.write(self.style.SUCCESS("Seed data ready."))
         self.stdout.write("Coach login: coach@example.com / password123")

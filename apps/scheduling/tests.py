@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from apps.profiles.models import CoachProfile
-from apps.scheduling.models import AvailabilitySlot
+from apps.scheduling.models import AvailabilitySlot, ProposalWindow
 
 
 class AvailabilitySlotOverlapTests(APITestCase):
@@ -68,3 +68,21 @@ class AvailabilitySlotOverlapTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_api_exposes_coach_display_name(self):
+        self.client.force_authenticate(user=self.coach_user)
+
+        response = self.client.get(reverse("availability-slot-detail", args=[self.slot.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["coach_display_name"], "Coach")
+
+    def test_proposal_window_rejects_overlap_with_active_class(self):
+        window = ProposalWindow(
+            coach=self.coach,
+            starts_at=self.starts_at - timedelta(minutes=30),
+            ends_at=self.ends_at + timedelta(minutes=30),
+        )
+
+        with self.assertRaises(ValidationError):
+            window.full_clean()
