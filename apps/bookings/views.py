@@ -1,3 +1,4 @@
+from django.utils import timezone
 from django.db.models import Q
 from rest_framework import decorators, exceptions, permissions, response, status, viewsets
 
@@ -12,6 +13,7 @@ from .models import BookingRequest, Cancellation, Session, StudentNote
 from .permissions import IsBookingParticipant, IsSessionParticipant, is_coach_owner, is_student_owner
 from .serializers import (
     BookingDecisionSerializer,
+    BookingCancelSerializer,
     BookingRequestSerializer,
     CancellationSerializer,
     SessionCancelSerializer,
@@ -45,8 +47,10 @@ class BookingRequestViewSet(viewsets.ModelViewSet):
         booking_request = self.get_object()
         if not is_coach_owner(request.user, booking_request.coach):
             raise exceptions.PermissionDenied("Only the coach can accept this booking request.")
-        session = accept_booking_request(booking_request)
+        session, competing_requests = accept_booking_request(booking_request)
         notify_booking_accepted(booking_request, session)
+        for competing_request in competing_requests:
+            notify_booking_rejected(competing_request)
         return response.Response(SessionSerializer(session).data, status=status.HTTP_201_CREATED)
 
     @decorators.action(detail=True, methods=["post"])
@@ -61,7 +65,38 @@ class BookingRequestViewSet(viewsets.ModelViewSet):
         booking_request.status = BookingRequest.Status.REJECTED
         booking_request.rejection_reason = serializer.validated_data.get("reason", "")
         booking_request.save(update_fields=["status", "rejection_reason", "updated_at"])
+        if booking_request.slot.status == booking_request.slot.Status.PENDING:
+            booking_request.slot.status = booking_request.slot.Status.CANCELLED
+            booking_request.slot.save(update_fields=["status", "updated_at"])
         notify_booking_rejected(booking_request)
+        return response.Response(self.get_serializer(booking_request).data)
+
+    @decorators.action(detail=True, methods=["post"])
+    def cancel(self, request, pk=None):
+        booking_request = self.get_object()
+        if not is_student_owner(request.user, booking_request.student):
+            raise exceptions.PermissionDenied("Only the requesting student can cancel this booking request.")
+        if booking_request.status != BookingRequest.Status.PENDING:
+            raise exceptions.ValidationError("Only pending booking requests can be cancelled here.")
+
+        serializer = BookingCancelSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        booking_request.status = BookingRequest.Status.CANCELLED
+        booking_request.cancellation_reason_code = serializer.validated_data["reason_code"]
+        booking_request.cancellation_note = serializer.validated_data.get("note", "")
+        booking_request.cancelled_at = timezone.now()
+        booking_request.save(
+            update_fields=[
+                "status",
+                "cancellation_reason_code",
+                "cancellation_note",
+                "cancelled_at",
+                "updated_at",
+            ]
+        )
+        if booking_request.slot.status == booking_request.slot.Status.PENDING:
+            booking_request.slot.status = booking_request.slot.Status.CANCELLED
+            booking_request.slot.save(update_fields=["status", "updated_at"])
         return response.Response(self.get_serializer(booking_request).data)
 
 
@@ -93,10 +128,13 @@ class SessionViewSet(viewsets.ReadOnlyModelViewSet):
 
         session.status = Session.Status.CANCELLED
         session.save(update_fields=["status", "updated_at"])
+        session.slot.status = session.slot.Status.CANCELLED
+        session.slot.save(update_fields=["status", "updated_at"])
         cancellation = Cancellation.objects.create(
             session=session,
             cancelled_by=cancelled_by,
             user=request.user,
+            reason_code=serializer.validated_data["reason_code"],
             reason=serializer.validated_data.get("reason", ""),
         )
         notify_session_cancelled(session, cancelled_by)

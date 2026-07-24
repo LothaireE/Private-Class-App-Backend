@@ -6,7 +6,7 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from apps.bookings.models import BookingRequest, Session, StudentNote
+from apps.bookings.models import BookingRequest, Cancellation, Session, StudentNote
 from apps.notifications.models import Notification
 from apps.profiles.models import CoachProfile, StudentProfile
 from apps.scheduling.models import AvailabilitySlot
@@ -125,19 +125,83 @@ class BookingApiTests(APITestCase):
         self.assertEqual(booking.status, BookingRequest.Status.REJECTED)
         self.assertTrue(Notification.objects.filter(user=self.student_user, kind=Notification.Kind.BOOKING_REJECTED).exists())
 
+    def test_student_can_cancel_pending_request_without_a_confirmed_cancellation(self):
+        booking = self.create_booking()
+        self.authenticate(self.student_user)
+
+        response = self.client.post(
+            reverse("booking-request-cancel", args=[booking.id]),
+            {"reason_code": "wrong_input", "note": ""},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, BookingRequest.Status.CANCELLED)
+        self.assertEqual(booking.cancellation_reason_code, BookingRequest.CancellationReason.WRONG_INPUT)
+        self.assertIsNotNone(booking.cancelled_at)
+        self.assertFalse(Cancellation.objects.exists())
+
+    def test_other_student_cannot_cancel_pending_request(self):
+        booking = self.create_booking()
+        self.authenticate(self.other_user)
+
+        response = self.client.post(
+            reverse("booking-request-cancel", args=[booking.id]),
+            {"reason_code": "wrong_input"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        booking.refresh_from_db()
+        self.assertEqual(booking.status, BookingRequest.Status.PENDING)
+
     def test_session_cancel_notifies_other_participant(self):
         booking = self.create_booking()
         self.authenticate(self.coach_user)
         accept_response = self.client.post(reverse("booking-request-accept", args=[booking.id]))
         session_id = accept_response.data["id"]
 
-        response = self.client.post(reverse("session-cancel", args=[session_id]), {"reason": "Sick"}, format="json")
+        response = self.client.post(
+            reverse("session-cancel", args=[session_id]),
+            {"reason_code": "illness", "reason": "Sick"},
+            format="json",
+        )
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         session = Session.objects.get(id=session_id)
         self.assertEqual(session.status, Session.Status.CANCELLED)
+        self.slot.refresh_from_db()
+        self.assertEqual(self.slot.status, AvailabilitySlot.Status.CANCELLED)
         notification = Notification.objects.get(user=self.student_user, kind=Notification.Kind.SESSION_CANCELLED)
         self.assertEqual(notification.data["cancelled_by"], "coach")
+        cancellation = Cancellation.objects.get(session=session)
+        self.assertEqual(cancellation.reason_code, Cancellation.Reason.ILLNESS)
+
+    def test_accepting_one_request_rejects_an_overlapping_pending_request(self):
+        self.slot.status = AvailabilitySlot.Status.PENDING
+        self.slot.save(update_fields=["status", "updated_at"])
+        booking = self.create_booking()
+        competing_slot = AvailabilitySlot.objects.create(
+            coach=self.coach,
+            starts_at=self.slot.starts_at + timedelta(minutes=15),
+            ends_at=self.slot.ends_at,
+            status=AvailabilitySlot.Status.PENDING,
+        )
+        competing = BookingRequest.objects.create(
+            slot=competing_slot,
+            coach=self.coach,
+            student=self.other_student,
+        )
+        self.authenticate(self.coach_user)
+
+        response = self.client.post(reverse("booking-request-accept", args=[booking.id]))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        competing.refresh_from_db()
+        competing_slot.refresh_from_db()
+        self.assertEqual(competing.status, BookingRequest.Status.REJECTED)
+        self.assertEqual(competing_slot.status, AvailabilitySlot.Status.CANCELLED)
 
 
     def test_booking_response_includes_slot_summary(self):

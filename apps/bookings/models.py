@@ -14,13 +14,30 @@ class BookingRequest(models.Model):
         REJECTED = "rejected", "Rejected"
         CANCELLED = "cancelled", "Cancelled"
 
+    class CancellationReason(models.TextChoices):
+        WRONG_INPUT = "wrong_input", "Wrong input"
+        COACH_RESPONSE_DELAY = "coach_response_delay", "Too long to answer"
+        SCHEDULE_CHANGED = "schedule_changed", "Schedule changed"
+        ILLNESS = "illness", "Illness"
+        OTHER = "other", "Other"
+
     slot = models.ForeignKey(AvailabilitySlot, on_delete=models.CASCADE, related_name="booking_requests")
+    proposal_window = models.ForeignKey(
+        "scheduling.ProposalWindow",
+        on_delete=models.SET_NULL,
+        related_name="booking_requests",
+        blank=True,
+        null=True,
+    )
     coach = models.ForeignKey(CoachProfile, on_delete=models.CASCADE, related_name="booking_requests")
     student = models.ForeignKey(StudentProfile, on_delete=models.CASCADE, related_name="booking_requests")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     requested_topic = models.CharField(max_length=160, blank=True)
     message = models.TextField(blank=True)
     rejection_reason = models.TextField(blank=True)
+    cancellation_reason_code = models.CharField(max_length=32, choices=CancellationReason.choices, blank=True)
+    cancellation_note = models.TextField(blank=True)
+    cancelled_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -88,9 +105,17 @@ class Cancellation(models.Model):
         STUDENT = "student", "Student"
         ADMIN = "admin", "Admin"
 
+    class Reason(models.TextChoices):
+        WRONG_INPUT = "wrong_input", "Wrong input"
+        COACH_RESPONSE_DELAY = "coach_response_delay", "Too long to answer"
+        SCHEDULE_CHANGED = "schedule_changed", "Schedule changed"
+        ILLNESS = "illness", "Illness"
+        OTHER = "other", "Other"
+
     session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="cancellations")
     cancelled_by = models.CharField(max_length=16, choices=CancelledBy.choices)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, blank=True, null=True, related_name="cancellations")
+    reason_code = models.CharField(max_length=32, choices=Reason.choices, default=Reason.OTHER)
     reason = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now)
 
